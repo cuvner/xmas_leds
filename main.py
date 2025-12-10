@@ -88,11 +88,50 @@ ARTWORKS = [
 cu = CosmicUnicorn()
 g = PicoGraphics(display=DISPLAY_COSMIC_UNICORN)
 cu.set_brightness(0.45)
+if hasattr(cu, "set_volume"):
+    # keep the melody gentle so it accompanies the lights
+    try:
+        cu.set_volume(0.35)
+    except Exception:
+        pass
 
 SCALE = 4  # 32 / 8
 art_index = 0
 slide_seconds = 2.0
 last_switch = time.time()
+melody_index = 0
+next_note_time = time.time()
+
+# Jingle-style melody (Hz, seconds). A frequency of 0.0 is a rest.
+MELODY = [
+    (659, 0.35),  # E5
+    (659, 0.35),
+    (659, 0.7),
+    (659, 0.35),
+    (659, 0.35),
+    (659, 0.7),
+    (659, 0.35),
+    (783, 0.35),  # G5
+    (523, 0.35),  # C5
+    (587, 0.35),  # D5
+    (659, 0.9),
+    (0.0, 0.25),  # breath
+    (698, 0.35),  # F5
+    (698, 0.35),
+    (698, 0.35),
+    (698, 0.35),
+    (698, 0.35),
+    (659, 0.35),
+    (659, 0.35),
+    (659, 0.2),
+    (659, 0.2),
+    (659, 0.35),
+    (587, 0.35),
+    (587, 0.35),
+    (659, 0.35),
+    (587, 0.35),
+    (783, 0.9),
+]
 
 def color_from_letter(letter: str, legend: dict):
     """Resolve a letter to an RGB tuple via legend -> COLORS.
@@ -122,11 +161,50 @@ def draw_art(art):
 
     cu.update(g)
 
+
+def play_note(frequency_hz: float, duration_s: float, volume: float = 0.45):
+    """Best-effort tone playback that adapts to available Cosmic Unicorn APIs."""
+    if frequency_hz <= 0 or duration_s <= 0:
+        return
+
+    # Prefer a dedicated tone helper if it exists.
+    if hasattr(cu, "play_tone"):
+        try:
+            cu.play_tone(frequency_hz, duration_s, volume)
+            return
+        except Exception:
+            pass
+
+    # Fallback to a synth-style API that may accept ADSR params.
+    if hasattr(cu, "play_note"):
+        try:
+            cu.play_note(frequency_hz, duration_s, volume)
+            return
+        except Exception:
+            pass
+
+
+def advance_melody(now: float):
+    """Schedule the next note in the background melody."""
+    global melody_index, next_note_time
+
+    if now < next_note_time:
+        return
+
+    frequency, beat = MELODY[melody_index]
+    play_note(frequency, beat)
+
+    melody_index = (melody_index + 1) % len(MELODY)
+    next_note_time = now + beat
+
 # ---------- Loop ----------
 draw_art(ARTWORKS[art_index])
 while True:
-    if time.time() - last_switch >= slide_seconds:
+    now = time.time()
+    advance_melody(now)
+
+    if now - last_switch >= slide_seconds:
         art_index = (art_index + 1) % len(ARTWORKS)
         draw_art(ARTWORKS[art_index])
-        last_switch = time.time()
+        last_switch = now
     time.sleep(0.05)
